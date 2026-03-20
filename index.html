@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ScreenShare Pro | Colaborativo com Modo Streaming</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none; /* Evita seleção em alguns elementos, mas não afeta inputs */
+        }
+
+        body {
+            background: #0a0c1a;
+            color: #eef;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Layout principal: compartilhamento à esquerda, painel à direita */
+        .dashboard {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            flex-direction: row;
+        }
+
+        /* Área principal de exibição (tela compartilhada / navegador virtual) */
+        .viewer-area {
+            flex: 3;
+            background: #000000;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #2a2e4a;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .screen-container {
+            flex: 1;
+            background: #111;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #sharedVideo, #virtualBrowserFrame {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: black;
+            transition: all 0.2s;
+        }
+
+        #virtualBrowserFrame {
+            border: none;
+            background: white;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 10px 14px;
+            border-radius: 40px;
+            z-index: 30;
+            transition: 0.2s;
+            font-weight: bold;
+        }
+        .fullscreen-btn:hover {
+            background: #3b82f6;
+            transform: scale(1.05);
+        }
+
+        /* Overlay de status do streamer (Modo Streaming ativado) */
+        .streamer-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #ef4444cc;
+            padding: 6px 12px;
+            border-radius: 40px;
+            font-size: 13px;
+            font-weight: bold;
+            backdrop-filter: blur(4px);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        /* Painel lateral direito */
+        .info-panel {
+            width: 320px;
+            background: #0f1222;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px 16px;
+            overflow-y: auto;
+            border-left: 1px solid #1e2139;
+        }
+
+        .panel-card {
+            background: #14182b;
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .viewer-counter {
+            font-size: 28px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .viewer-counter span:first-child {
+            font-size: 32px;
+        }
+
+        .toggle-stream-mode {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 12px;
+            border-radius: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 8px;
+        }
+        .toggle-switch {
+            width: 48px;
+            height: 26px;
+            background: #475569;
+            border-radius: 40px;
+            cursor: pointer;
+            position: relative;
+            transition: 0.2s;
+        }
+        .toggle-switch.active {
+            background: #3b82f6;
+        }
+        .toggle-switch::after {
+            content: "";
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 3px;
+            transition: 0.2s;
+        }
+        .toggle-switch.active::after {
+            left: 23px;
+        }
+
+        button {
+            background: #3b82f6;
+            border: none;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            width: 100%;
+        }
+        button.secondary {
+            background: #334155;
+        }
+        button.danger {
+            background: #dc2626;
+        }
+        button:hover {
+            filter: brightness(1.05);
+            transform: scale(0.98);
+        }
+
+        .chat-box {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .messages {
+            height: 240px;
+            overflow-y: auto;
+            background: #0b0e1a;
+            border-radius: 16px;
+            padding: 12px;
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .message {
+            background: #1e233b;
+            padding: 6px 10px;
+            border-radius: 16px;
+            word-break: break-word;
+        }
+        .message strong {
+            color: #60a5fa;
+        }
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input-area input {
+            flex: 1;
+            background: #1e233b;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 40px;
+            color: white;
+            outline: none;
+        }
+        .send-chat {
+            width: auto;
+            padding: 10px 18px;
+            background: #3b82f6;
+        }
+
+        .browser-permission {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+
+        hr {
+            border-color: #2a2e4a;
+            margin: 8px 0;
+        }
+
+        .status-badge {
+            font-size: 12px;
+            background: #22c55e33;
+            padding: 4px 8px;
+            border-radius: 40px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard">
+    <!-- Área de exibição principal: tela compartilhada ou navegador virtual -->
+    <div class="viewer-area">
+        <div class="screen-container" id="screenContainer">
+            <video id="sharedVideo" autoplay muted playsinline style="width:100%; height:100%; object-fit: contain;"></video>
+            <iframe id="virtualBrowserFrame" style="display:none; width:100%; height:100%; border:none;" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"></iframe>
+            <button class="fullscreen-btn" id="fullscreenBtn">⛶ Tela cheia</button>
+            <div id="streamerModeBadge" class="streamer-badge" style="display: none;">⏳ Modo Streaming (delay 5s)</div>
+        </div>
+    </div>
+
+    <!-- Painel direito: controles, chat, viewers -->
+    <div class="info-panel">
+        <div class="panel-card">
+            <div class="viewer-counter">
+                <span>👁️</span> <span id="viewerCount">1</span> <span>espectadores</span>
+            </div>
+            <div class="status-badge" id="streamStatusBadge">🔴 Stream offline</div>
+        </div>
+
+        <!-- Área do streamer (controles aparecem apenas para quem iniciou) -->
+        <div class="panel-card" id="streamerControls" style="display: none;">
+            <h3>🎛️ Controle do Streamer</h3>
+            <div class="toggle-stream-mode">
+                <span>🎬 Modo Streaming (delay 5s)</span>
+                <div id="streamingToggle" class="toggle-switch"></div>
+            </div>
+            <button id="shareScreenBtn" class="secondary">📺 Iniciar Compartilhamento</button>
+            <div id="browserOptions" style="margin-top: 12px; display: none;">
+                <button id="openVirtualBrowserBtn" class="secondary">🌐 Abrir Navegador Virtual</button>
+                <div class="browser-permission">
+                    <span>🤝 Deixar amigos mexerem</span>
+                    <div id="remoteControlToggle" class="toggle-switch" style="width: 40px; height: 22px;"></div>
+                </div>
+                <button id="closeBrowserBtn" class="danger" style="margin-top: 8px; background:#4b5563;">Fechar navegador</button>
+            </div>
+            <button id="stopShareBtn" class="danger" style="margin-top: 12px; display: none;">⏹️ Parar Compartilhamento</button>
+        </div>
+
+        <!-- Chat global -->
+        <div class="panel-card">
+            <h3>💬 Chat ao vivo</h3>
+            <div class="chat-box">
+                <div class="messages" id="chatMessages">
+                    <div class="message"><strong>🤖 Sistema:</strong> Conectado! Aguarde streamer iniciar transmissão.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="Digite sua mensagem..." maxlength="200">
+                    <button id="sendChatBtn" class="send-chat">Enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --------------------------------------------------------------
+    // LÓGICA GLOBAL: Compartilhamento, streamer x espectador, delay, navegador virtual
+    // --------------------------------------------------------------
+    
+    // Estado geral
+    let isStreamer = false;           // quem clicou primeiro para compartilhar
+    let isSharing = false;            // stream ativo
+    let mediaStream = null;           // stream capturada (tela ou canvas)
+    let peerConnection = null;        // simulação de "broadcast" local (delay)
+    let streamingModeActive = false;   // modo streaming com delay de 5s
+    let virtualBrowserActive = false;  // navegador virtual substituindo vídeo
+    let remoteControlEnabled = false;  // amigos podem interagir com iframe (simulado)
+    let currentViewers = 1;            // contador (simples)
+    let streamInterval = null;
+    let delayedVideoElement = null;     // elemento de delay
+    
+    // Elementos DOM
+    const sharedVideo = document.getElementById('sharedVideo');
+    const virtualFrame = document.getElementById('virtualBrowserFrame');
+    const streamerControlsDiv = document.getElementById('streamerControls');
+    const shareBtn = document.getElementById('shareScreenBtn');
+    const stopShareBtn = document.getElementById('stopShareBtn');
+    const streamingToggle = document.getElementById('streamingToggle');
+    const streamerModeBadge = document.getElementById('streamerModeBadge');
+    const openBrowserBtn = document.getElementById('openVirtualBrowserBtn');
+    const closeBrowserBtn = document.getElementById('closeBrowserBtn');
+    const browserOptions = document.getElementById('browserOptions');
+    const remoteControlToggle = document.getElementById('remoteControlToggle');
+    const viewerCountSpan = document.getElementById('viewerCount');
+    const streamStatusBadge = document.getElementById('streamStatusBadge');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const screenContainer = document.getElementById('screenContainer');
+    
+    // chat elements
+    const chatMessagesDiv = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    
+    // Simulação de viewers (incrementa por visitantes, mas nesse caso só contador fixo +1 quando outro entra)
+    // Como é página única, simulamos que outros espectadores incrementam via broadcast fake
+    // mas para demo: cada nova aba é um novo espectador (simulado por evento)
+    function addViewer() {
+        currentViewers++;
+        viewerCountSpan.innerText = currentViewers;
+        addSystemMessage(`👤 Novo espectador entrou. Total: ${currentViewers}`);
+    }
+    
+    // função para mensagem no chat
+    function addChatMessage(username, message) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        msgDiv.innerHTML = `<strong>${escapeHtml(username)}:</strong> ${escapeHtml(message)}`;
+        chatMessagesDiv.appendChild(msgDiv);
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+    }
+    
+    function addSystemMessage(text) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        msgDiv.innerHTML = `<strong>🤖 Sistema:</strong> ${escapeHtml(text)}`;
+        chatMessagesDiv.appendChild(msgDiv);
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+    }
+    
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, function(m) {
+            if(m === '&') return '&amp;';
+            if(m === '<') return '&lt;';
+            if(m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // Enviar mensagem de chat (simples broadcast)
+    function sendChatMessage() {
+        let msg = chatInput.value.trim();
+        if(!msg) return;
+        const sender = isStreamer ? "🎥 Streamer" : "👤 Espectador";
+        addChatMessage(sender, msg);
+        chatInput.value = '';
+        // broadcast para outros (simulado em ambiente local, mas funciona)
+    }
+    
+    sendChatBtn.onclick = sendChatMessage;
+    chatInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChatMessage(); });
+    
+    // Simular delay de 5 segundos (streaming mode)
+    function applyStreamingDelay(sourceStream) {
+        // Cria um pipeline de delay: captura frames com setInterval e reproduz com delay
+        if(streamInterval) clearInterval(streamInterval);
+        if(!sourceStream) return null;
+        
+        const videoTrack = sourceStream.getVideoTracks()[0];
+        if(!videoTrack) return sourceStream;
+        
+        // Para aplicar delay de verdade de forma simples: usamos um elemento video escondido e capturamos frames?
+        // Abordagem mais robusta: canvas + captureStream com delay manual
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const hiddenVideo = document.createElement('video');
+        hiddenVideo.srcObject = sourceStream;
+        hiddenVideo.autoplay = true;
+        hiddenVideo.muted = true;
+        hiddenVideo.play().catch(e=>console.log);
+        
+        const fps = 30;
+        let frameBuffer = [];
+        const delayMs = 5000; // 5 segundos
+        
+        const intervalId = setInterval(() => {
+            if(hiddenVideo.videoWidth && hiddenVideo.videoHeight) {
+                canvas.width = hiddenVideo.videoWidth;
+                canvas.height = hiddenVideo.videoHeight;
+                ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
+                const frameData = canvas.toDataURL('image/webp');
+                frameBuffer.push({data: frameData, timestamp: Date.now()});
+            }
+            // remover frames antigos
+            const now = Date.now();
+            while(frameBuffer.length && now - frameBuffer[0].timestamp > delayMs) {
+                const oldFrame = frameBuffer.shift();
+                // desenhar no canvas de saída
+                const outCanvas = document.createElement('canvas');
+                const outCtx = outCanvas.getContext('2d');
+                const img = new Image();
+                img.onload = () => {
+                    if(outCanvas.width === 0) {
+                        outCanvas.width = img.width;
+                        outCanvas.height = img.height;
+                    }
+                    outCtx.drawImage(img, 0, 0);
+                };
+                img.src = oldFrame.data;
+            }
+        }, 1000/fps);
+        
+        // capturar stream do canvas atrasado
+        const delayedCanvas = document.createElement('canvas');
+        const delayedStream = delayedCanvas.captureStream(fps);
+        const audioTracks = sourceStream.getAudioTracks();
+        if(audioTracks.length) {
+            audioTracks.forEach(track => delayedStream.addTrack(track));
+        }
+        
+        // atualizar canvas atrasado
+        const drawInterval = setInterval(() => {
+            if(frameBuffer.length > 0) {
+                const lastFrame = frameBuffer[0];
+                const img = new Image();
+                img.onload = () => {
+                    delayedCanvas.width = img.width;
+                    delayedCanvas.height = img.height;
+                    const ctxD = delayedCanvas.getContext('2d');
+                    ctxD.drawImage(img, 0, 0);
+                };
+                if(lastFrame) img.src = lastFrame.data;
+            }
+        }, 1000/fps);
+        
+        // guardar para limpeza
+        window._delayIntervals = { intervalId, drawInterval, hiddenVideo };
+        return delayedStream;
+    }
+    
+    // Atualizar a visualização principal (espectadores veem o mesmo que streamer com ou sem delay)
+    function updateGlobalDisplay(streamToShow) {
+        if(sharedVideo.srcObject !== streamToShow) {
+            sharedVideo.srcObject = streamToShow;
+            sharedVideo.play().catch(e=>console.log);
+        }
+        if(virtualBrowserActive && virtualFrame.style.display === 'none') {
+            // modo navegador já ativo, não mostrar video
+            sharedVideo.style.display = 'none';
+            virtualFrame.style.display = 'block';
+        } else if(!virtualBrowserActive) {
+            sharedVideo.style.display = 'block';
+            virtualFrame.style.display = 'none';
+        }
+    }
+    
+    // Iniciar compartilhamento de tela com opção de abrir navegador ou tela
+    async function startScreenShare() {
+        if(isSharing) return;
+        try {
+            // Escolha: abrir navegador virtual ou compartilhar tela?
+            const userChoice = confirm("Escolha:\nClique em OK para Compartilhar Tela real\nCancelar para Abrir Navegador Virtual");
+            let screenStream = null;
+            if(userChoice) {
+                // compartilhar tela real
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: 30 },
+                    audio: true
+                });
+                addSystemMessage("🔴 Compartilhamento de tela iniciado!");
+                if(virtualBrowserActive) closeVirtualBrowser();
+            } else {
+                // Abrir navegador virtual (modo interno)
+                openVirtualBrowserInternal();
+                return; // depois de abrir browser, o compartilhamento será simulado
+            }
+            
+            // Se chegou aqui, temos stream de tela real
+            let finalStream = screenStream;
+            if(streamingModeActive) {
+                finalStream = applyStreamingDelay(screenStream);
+                streamerModeBadge.style.display = "block";
+                addSystemMessage("⏳ Modo streaming ativado (5s de delay para espectadores)");
+            } else {
+                streamerModeBadge.style.display = "none";
+            }
+            mediaStream = screenStream;
+            isSharing = true;
+            updateGlobalDisplay(finalStream);
+            streamStatusBadge.innerText = "🔴 LIVE (stream ativo)";
+            streamStatusBadge.style.background = "#dc262633";
+            stopShareBtn.style.display = "block";
+            shareBtn.style.display = "none";
+            browserOptions.style.display = "block";
+            // Quando compartilhar tela real, desativa virtual
+            virtualBrowserActive = false;
+            virtualFrame.style.display = "none";
+            sharedVideo.style.display = "block";
+        } catch(err) {
+            alert("Erro ao capturar tela: "+err.message);
+        }
+    }
+    
+    function closeVirtualBrowser() {
+        virtualBrowserActive = false;
+        virtualFrame.style.display = "none";
+        sharedVideo.style.display = "block";
+        if(mediaStream && isSharing) {
+            updateGlobalDisplay(mediaStream);
+        } else {
+            sharedVideo.srcObject = null;
+        }
+        remoteControlEnabled = false;
+        remoteControlToggle.classList.remove('active');
+        addSystemMessage("🌐 Navegador virtual fechado.");
+    }
+    
+    function openVirtualBrowserInternal() {
+        if(isSharing && mediaStream) {
+            // já existe stream, paramos de exibir vídeo e ativamos iframe
+            if(mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            isSharing = false;
+            stopShareBtn.style.display = "none";
+            shareBtn.style.display = "block";
+            streamStatusBadge.innerText = "⚪ Stream offline";
+        }
+        virtualBrowserActive = true;
+        virtualFrame.style.display = "block";
+        sharedVideo.style.display = "none";
+        sharedVideo.srcObject = null;
+        // Carregar página inicial simples para navegador
+        virtualFrame.src = "https://www.google.com";
+        virtualFrame.sandbox = "allow-same-origin allow-scripts allow-popups allow-forms allow-modals";
+        addSystemMessage("📂 Navegador virtual aberto! Você pode navegar.");
+        if(remoteControlEnabled) {
+            addSystemMessage("🤝 Modo colaborativo ativo: amigos também podem interagir!");
+        }
+        browserOptions.style.display = "block";
+        isSharing = false; // navegador não é stream de tela real
+        streamStatusBadge.innerText = "🌐 Navegador Virtual (ativo)";
+    }
+    
+    openBrowserBtn.onclick = () => {
+        if(virtualBrowserActive) {
+            closeVirtualBrowser();
+            openVirtualBrowserInternal();
+        } else {
+            if(isSharing && mediaStream) {
+                if(confirm("Ativar navegador virtual interromperá a transmissão atual. Continuar?")) {
+                    if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
+                    isSharing = false;
+                    stopShareBtn.style.display = "none";
+                    shareBtn.style.display = "block";
+                    openVirtualBrowserInternal();
+                }
+            } else {
+                openVirtualBrowserInternal();
+            }
+        }
+    };
+    
+    closeBrowserBtn.onclick = () => {
+        if(virtualBrowserActive) closeVirtualBrowser();
+        else addSystemMessage("Nenhum navegador ativo.");
+    };
+    
+    // Controle remoto (simples: permite enviar comandos de clique/teclado? apenas permissão, mas por simplicidade, desbloqueamos sandbox adicional)
+    remoteControlToggle.onclick = () => {
+        if(!virtualBrowserActive) {
+            addSystemMessage("Abra o navegador virtual primeiro para ativar controle remoto.");
+            return;
+        }
+        remoteControlEnabled = !remoteControlEnabled;
+        if(remoteControlEnabled) {
+            remoteControlToggle.classList.add('active');
+            virtualFrame.sandbox = "allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-pointer-lock allow-top-navigation";
+            addSystemMessage("🤝 Amigos agora podem interagir com o navegador (modo colaborativo ativo)");
+        } else {
+            remoteControlToggle.classList.remove('active');
+            virtualFrame.sandbox = "allow-same-origin allow-scripts allow-popups allow-forms allow-modals";
+            addSystemMessage("🔒 Controle remoto desativado. Apenas você mexe.");
+        }
+    };
+    
+    // Alternar modo streaming (delay)
+    streamingToggle.onclick = () => {
+        if(!isSharing || !mediaStream) {
+            addSystemMessage("Inicie o compartilhamento primeiro para alterar modo streaming.");
+            return;
+        }
+        streamingModeActive = !streamingModeActive;
+        if(streamingModeActive) {
+            streamingToggle.classList.add('active');
+            // reiniciar stream com delay
+            const oldStream = mediaStream;
+            const newDelayed = applyStreamingDelay(oldStream);
+            updateGlobalDisplay(newDelayed);
+            streamerModeBadge.style.display = "block";
+            addSystemMessage("🎬 Modo Streaming ATIVADO: espectadores veem com 5s de delay.");
+        } else {
+            streamingToggle.classList.remove('active');
+            if(mediaStream) {
+                updateGlobalDisplay(mediaStream);
+                if(window._delayIntervals) {
+                    clearInterval(window._delayIntervals.intervalId);
+                    clearInterval(window._delayIntervals.drawInterval);
+                    if(window._delayIntervals.hiddenVideo) window._delayIntervals.hiddenVideo.pause();
+                }
+            }
+            streamerModeBadge.style.display = "none";
+            addSystemMessage("⏺ Modo Streaming desativado. Tempo real.");
+        }
+    };
+    
+    // Parar compartilhamento
+    function stopSharing() {
+        if(mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            mediaStream = null;
+        }
+        if(window._delayIntervals) {
+            clearInterval(window._delayIntervals.intervalId);
+            clearInterval(window._delayIntervals.drawInterval);
+        }
+        isSharing = false;
+        sharedVideo.srcObject = null;
+        sharedVideo.style.display = 'block';
+        virtualFrame.style.display = 'none';
+        virtualBrowserActive = false;
+        streamStatusBadge.innerText = "⚪ Stream offline";
+        stopShareBtn.style.display = "none";
+        shareBtn.style.display = "block";
+        browserOptions.style.display = "none";
+        streamerModeBadge.style.display = "none";
+        addSystemMessage("⏹️ Transmissão encerrada.");
+    }
+    
+    stopShareBtn.onclick = stopSharing;
+    shareBtn.onclick = startScreenShare;
+    
+    // Lógica de streamer: primeiro clique define quem é streamer
+    function initStreamerDetection() {
+        // O primeiro visitante que clicar em "Iniciar Compartilhamento" vira streamer.
+        // Se já existir streamer na sessão (via localStorage? mas para demo apenas para essa aba)
+        // Porém garantimos que só uma pessoa compartilha. Simulamos: quando inicia compartilhamento, define isStreamer=true.
+        shareBtn.onclick = () => {
+            if(isStreamer) {
+                startScreenShare();
+            } else if(!isSharing && !isStreamer) {
+                isStreamer = true;
+                streamerControlsDiv.style.display = "block";
+                addSystemMessage("🎥 Você é o streamer! Configure sua transmissão.");
+                startScreenShare();
+            } else if(isSharing) {
+                addSystemMessage("Já existe uma transmissão ativa.");
+            } else {
+                addSystemMessage("Aguardando streamer iniciar.");
+            }
+        };
+        // Se outro visitante (não streamer), apenas assiste e usa chat
+        if(!localStorage.getItem('fakeStreamer')) {
+            // simulando que se não é streamer, contador +1
+            addViewer();
+        }
+        // Marcar para evitar que outras abas se tornem streamer ao mesmo tempo (simples)
+        // Apenas a primeira aba que clicar assume
+    }
+    
+    // Fullscreen
+    fullscreenBtn.onclick = () => {
+        const elem = screenContainer;
+        if(elem.requestFullscreen) elem.requestFullscreen();
+        else if(elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    };
+    
+    // Inicializar contador de viewers (simula outros espectadores em abas diferentes)
+    // para simular múltiplos viewers, cada nova instância incrementa.
+    if(!window._viewerIncremented) {
+        window._viewerIncremented = true;
+        // Demora 1s para simular entrada de outros
+        setTimeout(() => {
+            if(!isStreamer) addViewer();
+        }, 500);
+    }
+    
+    initStreamerDetection();
+    addSystemMessage("✨ Bem-vindo! Seja streamer ou apenas assista e interaja no chat.");
+    // Simula que nenhum stream ativo inicial
+    streamerControlsDiv.style.display = "none";
+</script>
+</body>
+</html>
