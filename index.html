@@ -80,7 +80,6 @@ input {
 
 <body>
 
-<!-- LOGIN -->
 <div id="login">
   <h2>👤 Nome de usuário</h2>
   <input id="username" placeholder="Digite seu nome">
@@ -88,14 +87,12 @@ input {
   <button onclick="enterApp()">Entrar</button>
 </div>
 
-<!-- LOBBY -->
 <div id="lobby" class="screen">
   <h2>📡 Lobby</h2>
   <button onclick="createRoom()">Criar Sala</button>
   <button onclick="joinRoom()">Entrar em Sala</button>
 </div>
 
-<!-- SALA -->
 <div id="roomScreen" class="screen">
 
   <div class="left">
@@ -108,20 +105,20 @@ input {
     <h3 id="roomIdText"></h3>
 
     <div class="controls" id="hostControls" style="display:none;">
-      <button onclick="shareScreen()">📺 Compartilhar Tela</button>
+      <button onclick="shareScreen()">📺 Tela</button>
+      <button onclick="toggleCamera()">📷 Câmera</button>
+      <button onclick="toggleMic()">🎤 Microfone</button>
       <button onclick="openBrowser()">🌐 Navegador</button>
-      <button onclick="toggleStreaming()">⏳ Modo Streaming</button>
-      <button onclick="fullscreen()">⛶ Tela cheia</button>
+      <button onclick="toggleStreaming()">⏳ Delay</button>
+      <button onclick="fullscreen()">⛶ Full</button>
     </div>
 
     <hr>
 
-    <div>
-      <h3>💬 Chat</h3>
-      <div class="chat-box" id="chat"></div>
-      <input id="chatInput" placeholder="Mensagem">
-      <button onclick="sendChat()">Enviar</button>
-    </div>
+    <h3>💬 Chat</h3>
+    <div class="chat-box" id="chat"></div>
+    <input id="chatInput">
+    <button onclick="sendChat()">Enviar</button>
 
   </div>
 </div>
@@ -133,14 +130,20 @@ let peer;
 let conn;
 let roomId;
 let isHost = false;
-let stream;
+let stream = new MediaStream();
 let username = "";
 let streaming = false;
+
+let micOn = false;
+let camOn = false;
+
+let currentCall;
 
 const video = document.getElementById("video");
 const browser = document.getElementById("browser");
 const chatBox = document.getElementById("chat");
 
+/* LOGIN */
 function enterApp() {
   username = document.getElementById("username").value.trim();
   if(!username) return alert("Digite um nome");
@@ -156,6 +159,7 @@ function enterApp() {
   });
 
   peer.on("call", call=>{
+    currentCall = call;
     call.answer(stream);
     call.on("stream", remoteStream=>{
       video.srcObject = remoteStream;
@@ -163,19 +167,12 @@ function enterApp() {
   });
 }
 
+/* ROOM */
 function createRoom() {
   isHost = true;
   roomId = Math.random().toString(36).substring(2,6).toUpperCase();
-
   openRoom();
   document.getElementById("roomIdText").innerText = "Sala: " + roomId;
-
-  peer.on("call", call=>{
-    call.answer(stream);
-    call.on("stream", remoteStream=>{
-      video.srcObject = remoteStream;
-    });
-  });
 }
 
 function joinRoom() {
@@ -190,6 +187,8 @@ function joinRoom() {
   setupConn();
 
   const call = peer.call(roomId, stream);
+  currentCall = call;
+
   call.on("stream", remoteStream=>{
     video.srcObject = remoteStream;
   });
@@ -204,52 +203,70 @@ function openRoom() {
   }
 }
 
-/* STREAM */
-async function shareScreen() {
-  const original = await navigator.mediaDevices.getDisplayMedia({
-    video:true,
-    audio:true
-  });
+/* ===== STREAM CONTROLS ===== */
 
-  stream = original;
+function updateStream(newTracks) {
+  newTracks.forEach(track => stream.addTrack(track));
+
   video.srcObject = stream;
 
-  if(streaming) applyDelay(stream);
+  if(currentCall){
+    const sender = currentCall.peerConnection.getSenders();
+    stream.getTracks().forEach(track=>{
+      const s = sender.find(s=>s.track && s.track.kind === track.kind);
+      if(s) s.replaceTrack(track);
+    });
+  }
 }
 
-/* DELAY SIMPLES */
-function applyDelay(stream) {
-  const videoEl = document.createElement("video");
-  videoEl.srcObject = stream;
-  videoEl.play();
-
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-
-  setInterval(()=>{
-    canvas.width = videoEl.videoWidth;
-    canvas.height = videoEl.videoHeight;
-    ctx.drawImage(videoEl,0,0);
-    video.srcObject = canvas.captureStream(30);
-  }, 6000); // delay 6s
+/* TELA */
+async function shareScreen() {
+  const scr = await navigator.mediaDevices.getDisplayMedia({video:true, audio:true});
+  updateStream(scr.getTracks());
 }
 
-/* NAVEGADOR */
-function openBrowser() {
-  browser.style.display = "block";
-  video.style.display = "none";
-  browser.src = "https://www.google.com";
+/* CAMERA */
+async function toggleCamera() {
+  if(camOn){
+    stream.getVideoTracks().forEach(t=>t.stop());
+    camOn = false;
+    return;
+  }
+
+  const cam = await navigator.mediaDevices.getUserMedia({video:true});
+  updateStream(cam.getVideoTracks());
+  camOn = true;
 }
 
-/* STREAM MODE */
+/* MICROFONE */
+async function toggleMic() {
+  if(micOn){
+    stream.getAudioTracks().forEach(t=>t.stop());
+    micOn = false;
+    return;
+  }
+
+  const mic = await navigator.mediaDevices.getUserMedia({audio:true});
+  updateStream(mic.getAudioTracks());
+  micOn = true;
+}
+
+/* DELAY */
 function toggleStreaming() {
   streaming = !streaming;
-  alert("Modo streaming: " + (streaming ? "ON" : "OFF"));
+  alert("Delay: " + (streaming ? "ON" : "OFF"));
 }
 
 /* FULLSCREEN */
 function fullscreen() {
-  document.getElementById("video").requestFullscreen();
+  video.requestFullscreen();
+}
+
+/* BROWSER */
+function openBrowser() {
+  browser.style.display = "block";
+  video.style.display = "none";
+  browser.src = "https://www.google.com";
 }
 
 /* CHAT */
@@ -276,6 +293,7 @@ function addMsg(msg) {
   chatBox.appendChild(div);
 }
 
+/* CONEXÃO */
 function setupConn() {
   conn.on("data", data=>{
     if(data.type==="chat"){
