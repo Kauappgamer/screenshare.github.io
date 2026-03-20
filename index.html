@@ -2,82 +2,78 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ScreenShare Rooms</title>
-
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<title>ScreenShare PRO</title>
 
 <style>
 body {
   margin:0;
   font-family:sans-serif;
-  background:#0b1020;
+  background:#020617;
   color:white;
 }
 
-#login, #app {
-  display:none;
-  height:100vh;
-}
+.screen { display:none; height:100vh; }
 
-.center {
+#login {
   display:flex;
-  align-items:center;
-  justify-content:center;
   flex-direction:column;
-  height:100%;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
 }
 
-input, button {
-  padding:10px;
-  margin:5px;
-  border-radius:8px;
-  border:none;
-}
-
-button {
-  cursor:pointer;
-  background:#3b82f6;
-  color:white;
-}
-
-#layout {
+#roomScreen {
   display:flex;
   height:100vh;
 }
 
-#videoArea {
+.left {
   flex:3;
-  background:black;
   display:flex;
-  align-items:center;
-  justify-content:center;
+  flex-direction:column;
+  background:black;
+}
+
+.right {
+  width:320px;
+  background:#0f172a;
+  padding:10px;
+  overflow-y:auto;
 }
 
 video, iframe {
   width:100%;
   height:100%;
-  object-fit:contain;
+  background:black;
 }
 
-#panel {
-  width:300px;
-  background:#111827;
+.controls button {
+  margin:5px;
   padding:10px;
-  overflow:auto;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
 }
 
-#chat {
-  height:200px;
-  overflow:auto;
-  background:#0f172a;
-  padding:5px;
-  margin-top:10px;
+.chat-box {
+  height:250px;
+  overflow-y:auto;
+  background:#020617;
+  padding:10px;
+  border-radius:10px;
+  margin-bottom:10px;
 }
 
 .msg {
-  font-size:13px;
-  margin:3px 0;
+  background:#1e293b;
+  margin:5px 0;
+  padding:6px;
+  border-radius:6px;
+}
+
+input {
+  padding:8px;
+  width:70%;
 }
 </style>
 </head>
@@ -85,74 +81,74 @@ video, iframe {
 <body>
 
 <!-- LOGIN -->
-<div id="login" class="center">
-  <h2>Entrar</h2>
-  <input id="username" placeholder="Seu nome">
-  <button onclick="setName()">Entrar</button>
+<div id="login">
+  <h2>👤 Nome de usuário</h2>
+  <input id="username" placeholder="Digite seu nome">
+  <br>
+  <button onclick="enterApp()">Entrar</button>
 </div>
 
-<!-- APP -->
-<div id="app">
-  <div id="layout">
-    
-    <div id="videoArea">
-      <video id="video" autoplay playsinline></video>
-      <iframe id="browser" style="display:none;"></iframe>
+<!-- LOBBY -->
+<div id="lobby" class="screen">
+  <h2>📡 Lobby</h2>
+  <button onclick="createRoom()">Criar Sala</button>
+  <button onclick="joinRoom()">Entrar em Sala</button>
+</div>
+
+<!-- SALA -->
+<div id="roomScreen" class="screen">
+
+  <div class="left">
+    <video id="video" autoplay playsinline></video>
+    <iframe id="browser" style="display:none;"></iframe>
+  </div>
+
+  <div class="right">
+
+    <h3 id="roomIdText"></h3>
+
+    <div class="controls" id="hostControls" style="display:none;">
+      <button onclick="shareScreen()">📺 Compartilhar Tela</button>
+      <button onclick="openBrowser()">🌐 Navegador</button>
+      <button onclick="toggleStreaming()">⏳ Modo Streaming</button>
+      <button onclick="fullscreen()">⛶ Tela cheia</button>
     </div>
 
-    <div id="panel">
-      <h3 id="roomInfo"></h3>
+    <hr>
 
-      <button onclick="createRoom()">Criar Sala</button>
-      <input id="roomIdInput" placeholder="ID da sala">
-      <button onclick="joinRoom()">Entrar na Sala</button>
-
-      <hr>
-
-      <button onclick="shareScreen()">Compartilhar Tela</button>
-      <button onclick="startCamera()">Câmera/Mic</button>
-      <button onclick="openBrowser()">Navegador</button>
-
-      <hr>
-
-      <button onclick="toggleStream()">Modo Streaming</button>
-      <button onclick="toggleFullscreen()">Tela cheia</button>
-
-      <div id="chat"></div>
-      <input id="msg" placeholder="Mensagem">
-      <button onclick="sendMsg()">Enviar</button>
+    <div>
+      <h3>💬 Chat</h3>
+      <div class="chat-box" id="chat"></div>
+      <input id="chatInput" placeholder="Mensagem">
+      <button onclick="sendChat()">Enviar</button>
     </div>
 
   </div>
 </div>
 
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
 <script>
-let peer, conn;
-let stream;
-let username;
+let peer;
+let conn;
 let roomId;
 let isHost = false;
-let streamMode = false;
+let stream;
+let username = "";
+let streaming = false;
 
-// LOGIN
-document.getElementById("login").style.display="flex";
+const video = document.getElementById("video");
+const browser = document.getElementById("browser");
+const chatBox = document.getElementById("chat");
 
-function setName() {
-  username = document.getElementById("username").value;
-  if(!username) return alert("Digite nome");
+function enterApp() {
+  username = document.getElementById("username").value.trim();
+  if(!username) return alert("Digite um nome");
 
-  document.getElementById("login").style.display="none";
-  document.getElementById("app").style.display="block";
+  document.getElementById("login").style.display = "none";
+  document.getElementById("lobby").style.display = "block";
 
-  peer = new Peer(undefined, {
-    host: "peerjs.com",
-    secure: true,
-    port: 443
-  });
-
-  peer.on("open", id=>{
-    console.log("Peer ID:", id);
-  });
+  peer = new Peer();
 
   peer.on("connection", c=>{
     conn = c;
@@ -162,90 +158,130 @@ function setName() {
   peer.on("call", call=>{
     call.answer(stream);
     call.on("stream", remoteStream=>{
-      document.getElementById("video").srcObject = remoteStream;
+      video.srcObject = remoteStream;
     });
   });
 }
 
-// SALA
-function createRoom(){
-  roomId = generateRoomId();
+function createRoom() {
   isHost = true;
-  document.getElementById("roomInfo").innerText = "Sala: " + roomId;
+  roomId = Math.random().toString(36).substring(2,6).toUpperCase();
 
-  alert("Compartilhe o ID: " + roomId);
+  openRoom();
+  document.getElementById("roomIdText").innerText = "Sala: " + roomId;
+
+  peer.on("call", call=>{
+    call.answer(stream);
+    call.on("stream", remoteStream=>{
+      video.srcObject = remoteStream;
+    });
+  });
 }
 
-function joinRoom(){
-  roomId = document.getElementById("roomIdInput").value;
+function joinRoom() {
+  isHost = false;
+  roomId = prompt("Digite o ID da sala:");
   if(!roomId) return;
+
+  openRoom();
+  document.getElementById("roomIdText").innerText = "Sala: " + roomId;
 
   conn = peer.connect(roomId);
   setupConn();
 
   const call = peer.call(roomId, stream);
   call.on("stream", remoteStream=>{
-    document.getElementById("video").srcObject = remoteStream;
+    video.srcObject = remoteStream;
   });
-
-  document.getElementById("roomInfo").innerText = "Entrou na sala: " + roomId;
 }
 
-function setupConn(){
+function openRoom() {
+  document.getElementById("lobby").style.display = "none";
+  document.getElementById("roomScreen").style.display = "flex";
+
+  if(isHost) {
+    document.getElementById("hostControls").style.display = "block";
+  }
+}
+
+/* STREAM */
+async function shareScreen() {
+  const original = await navigator.mediaDevices.getDisplayMedia({
+    video:true,
+    audio:true
+  });
+
+  stream = original;
+  video.srcObject = stream;
+
+  if(streaming) applyDelay(stream);
+}
+
+/* DELAY SIMPLES */
+function applyDelay(stream) {
+  const videoEl = document.createElement("video");
+  videoEl.srcObject = stream;
+  videoEl.play();
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  setInterval(()=>{
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    ctx.drawImage(videoEl,0,0);
+    video.srcObject = canvas.captureStream(30);
+  }, 6000); // delay 6s
+}
+
+/* NAVEGADOR */
+function openBrowser() {
+  browser.style.display = "block";
+  video.style.display = "none";
+  browser.src = "https://www.google.com";
+}
+
+/* STREAM MODE */
+function toggleStreaming() {
+  streaming = !streaming;
+  alert("Modo streaming: " + (streaming ? "ON" : "OFF"));
+}
+
+/* FULLSCREEN */
+function fullscreen() {
+  document.getElementById("video").requestFullscreen();
+}
+
+/* CHAT */
+function sendChat() {
+  const input = document.getElementById("chatInput");
+  const msg = input.value;
+  if(!msg) return;
+
+  const data = username + ": " + msg;
+
+  addMsg(data);
+
+  if(conn){
+    conn.send({type:"chat", msg:data});
+  }
+
+  input.value = "";
+}
+
+function addMsg(msg) {
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.innerText = msg;
+  chatBox.appendChild(div);
+}
+
+function setupConn() {
   conn.on("data", data=>{
     if(data.type==="chat"){
       addMsg(data.msg);
     }
   });
-}
-
-// STREAM
-async function shareScreen(){
-  stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:true});
-}
-
-async function startCamera(){
-  stream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-}
-
-// NAVEGADOR
-function openBrowser(){
-  document.getElementById("video").style.display="none";
-  document.getElementById("browser").style.display="block";
-  document.getElementById("browser").src = "https://www.google.com";
-}
-
-// CHAT
-function sendMsg(){
-  let msg = document.getElementById("msg").value;
-  addMsg("Você: "+msg);
-
-  if(conn){
-    conn.send({type:"chat", msg: username+": "+msg});
-  }
-}
-
-function addMsg(msg){
-  let div = document.createElement("div");
-  div.className="msg";
-  div.innerText = msg;
-  document.getElementById("chat").appendChild(div);
-}
-
-// STREAM MODE (simulado)
-function toggleStream(){
-  streamMode = !streamMode;
-  alert("Modo streaming: " + (streamMode ? "ON" : "OFF"));
-}
-
-// FULLSCREEN
-function toggleFullscreen(){
-  document.documentElement.requestFullscreen();
-}
-
-// ID ALEATÓRIO
-function generateRoomId(){
-  return Math.random().toString(36).substring(2,6).toUpperCase();
 }
 </script>
 
